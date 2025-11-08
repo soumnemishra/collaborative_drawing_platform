@@ -1,5 +1,11 @@
 // Main application initialization and coordination
 (function() {
+    // Initialize performance monitor first (needed for WebSocket latency tracking)
+    window.performanceMonitor = new PerformanceMonitor();
+    
+    // Initialize session manager
+    window.sessionManager = new SessionManager('default');
+    
     // Initialize canvas manager
     window.canvasManager = new CanvasManager('drawing-canvas', 'cursor-layer');
     
@@ -73,8 +79,11 @@
     const clearBtn = document.getElementById('clear-btn');
     clearBtn.addEventListener('click', () => {
         if (confirm('Are you sure you want to clear the entire canvas?')) {
-            window.canvasManager.clear();
-            // Note: In a full implementation, you'd also notify the server
+            if (window.wsManager) {
+                window.wsManager.clear();
+            } else {
+                window.canvasManager.clear();
+            }
         }
     });
     
@@ -87,6 +96,30 @@
             const y = e.clientY - rect.top;
             window.wsManager.socket.emit('cursor-move', { x, y });
         }
+    });
+    
+    // Save session button
+    const saveBtn = document.getElementById('save-btn');
+    saveBtn.addEventListener('click', async () => {
+        const sessionName = prompt('Enter a name for this session:');
+        if (sessionName) {
+            await window.sessionManager.saveSession(sessionName);
+        }
+    });
+    
+    // Load session button
+    const loadBtn = document.getElementById('load-btn');
+    const sessionList = document.getElementById('session-list');
+    const closeSessionList = document.getElementById('close-session-list');
+    
+    loadBtn.addEventListener('click', async () => {
+        const sessions = await window.sessionManager.listSessions();
+        window.sessionManager.displaySessions(sessions);
+        sessionList.style.display = 'block';
+    });
+    
+    closeSessionList.addEventListener('click', () => {
+        sessionList.style.display = 'none';
     });
     
     console.log('Collaborative Canvas initialized');

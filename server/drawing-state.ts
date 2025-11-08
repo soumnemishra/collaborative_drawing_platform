@@ -106,5 +106,34 @@ export class DrawingState {
       this.history.splice(historyIndex, 1);
     }
   }
+
+  // Serialize state for saving
+  serialize(): { strokes: Stroke[]; history: string[] } {
+    return {
+      strokes: Array.from(this.strokes.values()),
+      history: [...this.history]
+    };
+  }
+
+  // Deserialize state from saved data
+  deserialize(data: { strokes: Stroke[]; history: string[] }): void {
+    this.strokes.clear();
+    this.history = [];
+    this.undoneStrokes = [];
+    this.currentStrokes.clear();
+
+    data.strokes.forEach(stroke => {
+      this.strokes.set(stroke.id, stroke);
+    });
+    this.history = [...data.history];
+  }
+
+  // Clear all state
+  clear(): void {
+    this.strokes.clear();
+    this.history = [];
+    this.undoneStrokes = [];
+    this.currentStrokes.clear();
+  }
 }
 

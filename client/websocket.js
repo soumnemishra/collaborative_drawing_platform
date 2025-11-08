@@ -19,6 +19,11 @@ class WebSocketManager {
             
             // Join default room
             this.joinRoom(this.currentRoom);
+            
+            // Start latency monitoring if performance monitor is available
+            if (window.performanceMonitor) {
+                window.performanceMonitor.startLatencyMonitoring(this.socket);
+            }
         });
 
         this.socket.on('disconnect', () => {
@@ -90,6 +95,13 @@ class WebSocketManager {
         this.socket.on('users-updated', (users) => {
             this.updateUsersList(users);
         });
+
+        // Clear canvas event
+        this.socket.on('clear', (data) => {
+            if (window.canvasManager) {
+                window.canvasManager.clear();
+            }
+        });
     }
 
     joinRoom(roomId) {
@@ -148,6 +160,11 @@ class WebSocketManager {
     redo() {
         if (!this.connected || !this.socket) return;
         this.socket.emit('redo');
+    }
+
+    clear() {
+        if (!this.connected || !this.socket) return;
+        this.socket.emit('clear');
     }
 
     updateConnectionStatus(connected) {
