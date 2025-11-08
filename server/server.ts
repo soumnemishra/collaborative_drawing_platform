@@ -174,53 +174,145 @@ io.on('connection', (socket) => {
     console.log(`User ${userId} joined room ${roomId}`);
   });
 
-  // Handle drawing events
-  socket.on('draw-start', (data: { x: number; y: number; color: string; lineWidth: number; tool: string; strokeId?: string }) => {
-    if (!currentRoom) return;
-
-    const drawingState = drawingStates.get(currentRoom)!;
-    // Use provided strokeId or generate one
-    const strokeId = data.strokeId || uuidv4();
+  /**
+   * Validate drawing data to prevent invalid operations and attacks
+   */
+  const validateDrawingData = (data: any): boolean => {
+    if (!data) return false;
     
-    // Start the stroke with the ID
-    drawingState.startStroke(userId, { ...data, strokeId });
+    // Validate coordinates
+    if (typeof data.x !== 'number' || typeof data.y !== 'number') return false;
+    if (isNaN(data.x) || isNaN(data.y)) return false;
+    if (data.x < 0 || data.y < 0 || data.x > 10000 || data.y > 10000) return false;
+    
+    return true;
+  };
 
-    // Broadcast to other users in room
-    socket.to(currentRoom).emit('draw-start', {
-      x: data.x,
-      y: data.y,
-      color: data.color,
-      lineWidth: data.lineWidth,
-      tool: data.tool,
-      userId,
-      strokeId
-    });
+  /**
+   * Validate stroke properties
+   */
+  const validateStrokeProperties = (data: any): boolean => {
+    if (!data) return false;
+    
+    // Validate color (hex color or rgb)
+    if (typeof data.color !== 'string') return false;
+    if (!/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(data.color) && 
+        !data.color.startsWith('rgb')) return false;
+    
+    // Validate line width
+    if (typeof data.lineWidth !== 'number') return false;
+    if (data.lineWidth < 1 || data.lineWidth > 100) return false;
+    
+    // Validate tool
+    if (typeof data.tool !== 'string') return false;
+    if (data.tool !== 'brush' && data.tool !== 'eraser') return false;
+    
+    return true;
+  };
+
+  // Handle drawing events with validation and error handling
+  socket.on('draw-start', (data: { x: number; y: number; color: string; lineWidth: number; tool: string; strokeId?: string }) => {
+    try {
+      if (!currentRoom) {
+        console.warn(`User ${userId} attempted draw-start without room`);
+        return;
+      }
+
+      // Validate input data
+      if (!validateDrawingData(data) || !validateStrokeProperties(data)) {
+        console.warn(`Invalid draw-start data from user ${userId}`);
+        socket.emit('error', { message: 'Invalid drawing data' });
+        return;
+      }
+
+      const drawingState = drawingStates.get(currentRoom);
+      if (!drawingState) {
+        console.error(`Drawing state not found for room ${currentRoom}`);
+        return;
+      }
+
+      // Use provided strokeId or generate one
+      const strokeId = data.strokeId || uuidv4();
+      
+      // Start the stroke with the ID
+      drawingState.startStroke(userId, { ...data, strokeId });
+
+      // Broadcast to other users in room (not to sender)
+      socket.to(currentRoom).emit('draw-start', {
+        x: data.x,
+        y: data.y,
+        color: data.color,
+        lineWidth: data.lineWidth,
+        tool: data.tool,
+        userId,
+        strokeId
+      });
+    } catch (error) {
+      console.error(`Error handling draw-start from user ${userId}:`, error);
+      socket.emit('error', { message: 'Failed to process drawing start' });
+    }
   });
 
   socket.on('draw-move', (data: { x: number; y: number; strokeId: string }) => {
-    if (!currentRoom) return;
+    try {
+      if (!currentRoom) {
+        console.warn(`User ${userId} attempted draw-move without room`);
+        return;
+      }
 
-    const drawingState = drawingStates.get(currentRoom)!;
-    drawingState.addPoint(data.strokeId, data.x, data.y);
+      // Validate input data
+      if (!validateDrawingData(data) || !data.strokeId || typeof data.strokeId !== 'string') {
+        console.warn(`Invalid draw-move data from user ${userId}`);
+        return;
+      }
 
-    // Broadcast to other users
-    socket.to(currentRoom).emit('draw-move', {
-      ...data,
-      userId
-    });
+      const drawingState = drawingStates.get(currentRoom);
+      if (!drawingState) {
+        console.error(`Drawing state not found for room ${currentRoom}`);
+        return;
+      }
+
+      drawingState.addPoint(data.strokeId, data.x, data.y);
+
+      // Broadcast to other users (not to sender)
+      socket.to(currentRoom).emit('draw-move', {
+        ...data,
+        userId
+      });
+    } catch (error) {
+      console.error(`Error handling draw-move from user ${userId}:`, error);
+    }
   });
 
   socket.on('draw-end', (data: { strokeId: string }) => {
-    if (!currentRoom) return;
+    try {
+      if (!currentRoom) {
+        console.warn(`User ${userId} attempted draw-end without room`);
+        return;
+      }
 
-    const drawingState = drawingStates.get(currentRoom)!;
-    drawingState.endStroke(data.strokeId);
+      // Validate input data
+      if (!data || !data.strokeId || typeof data.strokeId !== 'string') {
+        console.warn(`Invalid draw-end data from user ${userId}`);
+        return;
+      }
 
-    // Broadcast to other users
-    socket.to(currentRoom).emit('draw-end', {
-      ...data,
-      userId
-    });
+      const drawingState = drawingStates.get(currentRoom);
+      if (!drawingState) {
+        console.error(`Drawing state not found for room ${currentRoom}`);
+        return;
+      }
+
+      drawingState.endStroke(data.strokeId);
+
+      // Broadcast to other users (not to sender)
+      socket.to(currentRoom).emit('draw-end', {
+        ...data,
+        userId
+      });
+    } catch (error) {
+      console.error(`Error handling draw-end from user ${userId}:`, error);
+    }
   });
 
   // Handle cursor position updates
@@ -237,46 +329,91 @@ io.on('connection', (socket) => {
     socket.emit('pong', timestamp);
   });
 
-  // Handle undo/redo
+  // Handle undo/redo with error handling
   socket.on('undo', () => {
-    if (!currentRoom) return;
+    try {
+      if (!currentRoom) {
+        console.warn(`User ${userId} attempted undo without room`);
+        return;
+      }
 
-    const drawingState = drawingStates.get(currentRoom)!;
-    const undoneStroke = drawingState.undo();
+      const drawingState = drawingStates.get(currentRoom);
+      if (!drawingState) {
+        console.error(`Drawing state not found for room ${currentRoom}`);
+        return;
+      }
 
-    if (undoneStroke) {
-      // Broadcast undo to all users
-      io.to(currentRoom).emit('undo', {
-        strokeId: undoneStroke.id,
-        userId
-      });
+      const undoneStroke = drawingState.undo();
+
+      if (undoneStroke) {
+        // Broadcast undo to all users in room
+        io.to(currentRoom).emit('undo', {
+          strokeId: undoneStroke.id,
+          userId
+        });
+      } else {
+        // No stroke to undo - notify sender only
+        socket.emit('undo-failed', { message: 'Nothing to undo' });
+      }
+    } catch (error) {
+      console.error(`Error handling undo from user ${userId}:`, error);
+      socket.emit('error', { message: 'Failed to undo' });
     }
   });
 
   socket.on('redo', () => {
-    if (!currentRoom) return;
+    try {
+      if (!currentRoom) {
+        console.warn(`User ${userId} attempted redo without room`);
+        return;
+      }
 
-    const drawingState = drawingStates.get(currentRoom)!;
-    const redoneStroke = drawingState.redo();
+      const drawingState = drawingStates.get(currentRoom);
+      if (!drawingState) {
+        console.error(`Drawing state not found for room ${currentRoom}`);
+        return;
+      }
 
-    if (redoneStroke) {
-      // Broadcast redo to all users with full stroke data
-      io.to(currentRoom).emit('redo', {
-        stroke: redoneStroke,
-        userId
-      });
+      const redoneStroke = drawingState.redo();
+
+      if (redoneStroke) {
+        // Broadcast redo to all users in room with full stroke data
+        io.to(currentRoom).emit('redo', {
+          stroke: redoneStroke,
+          userId
+        });
+      } else {
+        // No stroke to redo - notify sender only
+        socket.emit('redo-failed', { message: 'Nothing to redo' });
+      }
+    } catch (error) {
+      console.error(`Error handling redo from user ${userId}:`, error);
+      socket.emit('error', { message: 'Failed to redo' });
     }
   });
 
-  // Handle clear canvas
+  // Handle clear canvas with error handling
   socket.on('clear', () => {
-    if (!currentRoom) return;
+    try {
+      if (!currentRoom) {
+        console.warn(`User ${userId} attempted clear without room`);
+        return;
+      }
 
-    const drawingState = drawingStates.get(currentRoom)!;
-    drawingState.clear();
+      const drawingState = drawingStates.get(currentRoom);
+      if (!drawingState) {
+        console.error(`Drawing state not found for room ${currentRoom}`);
+        return;
+      }
 
-    // Broadcast clear to all users
-    io.to(currentRoom).emit('clear', { userId });
+      drawingState.clear();
+
+      // Broadcast clear to all users in room
+      io.to(currentRoom).emit('clear', { userId });
+    } catch (error) {
+      console.error(`Error handling clear from user ${userId}:`, error);
+      socket.emit('error', { message: 'Failed to clear canvas' });
+    }
   });
 
   // Handle disconnection

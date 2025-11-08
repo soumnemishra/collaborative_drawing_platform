@@ -431,3 +431,88 @@ redraw() {
 3. **Canvas Layers**: Use multiple canvas layers for better performance
 4. **Web Workers**: Offload processing to workers
 
+## Conflict Resolution Strategy
+
+### Problem Statement
+
+When multiple users draw simultaneously, conflicts can occur:
+- Two users drawing in overlapping areas
+- Network delays causing out-of-order events
+- Simultaneous undo/redo operations
+- Race conditions during state synchronization
+
+### Our Solution
+
+#### 1. **Unique Stroke IDs**
+- Each stroke receives a unique identifier (UUID) when created
+- Stroke IDs are generated client-side using timestamp + random: `local-${Date.now()}-${Math.random()}`
+- Server validates and can regenerate IDs if needed
+- This prevents ID collisions and allows tracking of individual strokes
+
+#### 2. **Server as Source of Truth**
+- Server maintains authoritative state in `DrawingState` class
+- All drawing operations update server state first
+- Server broadcasts to other clients (not back to sender)
+- New users receive complete state on connection
+
+#### 3. **Event Ordering**
+- Drawing events are processed in order: `draw-start` → `draw-move` → `draw-end`
+- Server maintains stroke history array for undo/redo
+- Events are timestamped for debugging and conflict detection
+
+#### 4. **Last-Write-Wins for Overlapping Strokes**
+- Natural drawing behavior: later strokes appear on top
+- Canvas rendering order matches stroke history order
+- No explicit conflict resolution needed - visual result is intuitive
+
+#### 5. **State Synchronization**
+- New users receive full canvas state on join
+- State includes all strokes in correct order
+- Redraw ensures consistency across all clients
+
+#### 6. **Undo/Redo Conflict Handling**
+- Undo/redo operations are processed server-side
+- Only one undo/redo can happen at a time (server processes sequentially)
+- Undone strokes are moved to redo stack
+- All clients receive undo/redo events simultaneously
+
+#### 7. **Network Failure Handling**
+- Offline queue stores events during disconnection
+- Events are replayed when connection is restored
+- Queue has maximum size (100 events) to prevent memory issues
+- Oldest events are dropped if queue is full
+
+### Implementation Details
+
+```javascript
+// Client-side: Unique stroke ID generation
+const strokeId = `local-${Date.now()}-${Math.random()}`;
+
+// Server-side: State management
+drawingState.startStroke(userId, { ...data, strokeId });
+drawingState.addPoint(strokeId, x, y);
+drawingState.endStroke(strokeId);
+
+// Conflict prevention: Server validates all inputs
+if (!validateDrawingData(data)) {
+  socket.emit('error', { message: 'Invalid drawing data' });
+  return;
+}
+```
+
+### Edge Cases Handled
+
+1. **Rapid Drawing**: Throttling cursor updates (100ms) prevents spam
+2. **Invalid Data**: Server validates coordinates, colors, line widths
+3. **Missing Strokes**: Server checks stroke exists before adding points
+4. **Concurrent Undo**: Server processes sequentially, prevents race conditions
+5. **Disconnection**: Offline queue preserves user actions
+6. **State Desync**: Full state sync on reconnection
+
+### Performance Considerations
+
+- **O(1) Lookup**: Map-based stroke storage for efficient updates
+- **Batch Processing**: Offline queue processes events in order
+- **Throttling**: Cursor updates throttled to reduce network load
+- **Validation**: Early validation prevents processing invalid data
+

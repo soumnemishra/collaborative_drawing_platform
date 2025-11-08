@@ -1,20 +1,63 @@
-// Canvas drawing operations and state management
+/**
+ * Canvas drawing operations and state management
+ * 
+ * This class handles all canvas drawing operations, including:
+ * - Local drawing (immediate feedback)
+ * - Remote drawing synchronization
+ * - Stroke management and redrawing
+ * - Cursor position tracking
+ * 
+ * Conflict Resolution Strategy:
+ * - Each stroke has a unique ID (strokeId) to prevent conflicts
+ * - Strokes are stored in a Map for O(1) lookup
+ * - Last-write-wins for overlapping strokes (natural drawing behavior)
+ * - Server maintains authoritative state to prevent desynchronization
+ */
 class CanvasManager {
+    /**
+     * Initialize canvas manager
+     * @param {string} canvasId - ID of the main drawing canvas element
+     * @param {string} cursorLayerId - ID of the cursor overlay canvas element
+     */
     constructor(canvasId, cursorLayerId) {
+        // Get canvas elements and contexts
         this.canvas = document.getElementById(canvasId);
-        this.ctx = this.canvas.getContext('2d');
-        this.cursorLayer = document.getElementById(cursorLayerId);
-        this.cursorCtx = this.cursorLayer.getContext('2d');
+        if (!this.canvas) {
+            throw new Error(`Canvas element with id "${canvasId}" not found`);
+        }
         
+        this.ctx = this.canvas.getContext('2d');
+        if (!this.ctx) {
+            throw new Error('Failed to get 2D rendering context');
+        }
+        
+        this.cursorLayer = document.getElementById(cursorLayerId);
+        if (!this.cursorLayer) {
+            throw new Error(`Cursor layer element with id "${cursorLayerId}" not found`);
+        }
+        
+        this.cursorCtx = this.cursorLayer.getContext('2d');
+        if (!this.cursorCtx) {
+            throw new Error('Failed to get cursor layer 2D rendering context');
+        }
+        
+        // Drawing state
         this.isDrawing = false;
         this.currentStroke = null;
-        this.strokes = new Map(); // strokeId -> stroke data
-        this.remoteCursors = new Map(); // userId -> cursor data
         
+        // Stroke storage: Map for O(1) lookup by strokeId
+        // This allows efficient updates and conflict resolution
+        this.strokes = new Map(); // strokeId -> stroke data
+        
+        // Remote cursor positions: userId -> cursor data
+        this.remoteCursors = new Map();
+        
+        // Drawing tool settings
         this.tool = 'brush';
         this.color = '#000000';
         this.lineWidth = 5;
         
+        // Initialize canvas and event listeners
         this.setupCanvas();
         this.setupEventListeners();
     }

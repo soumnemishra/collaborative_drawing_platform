@@ -12,22 +12,26 @@ A multi-user drawing application where multiple people can draw simultaneously o
 ### Installation
 
 1. Clone the repository:
+
 ```bash
 git clone <repository-url>
 cd collaborative-canvas
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
 3. Build the TypeScript code:
+
 ```bash
 npm run build
 ```
 
 4. Start the server:
+
 ```bash
 npm start
 ```
@@ -37,16 +41,19 @@ The application will be available at `http://localhost:3000`
 ### Using New Features
 
 #### Saving a Drawing Session
+
 1. Click the **"💾 Save Session"** button in the toolbar
 2. Enter a name for your session when prompted
 3. Your canvas state will be saved to the server
 
 #### Loading a Drawing Session
+
 1. Click the **"📂 Load Session"** button in the toolbar
 2. Browse the list of saved sessions
 3. Click on a session to load it (syncs to all connected users)
 
 #### Performance Metrics
+
 - **FPS Counter**: Displays real-time frames per second in the Performance section
 - **Latency Display**: Shows WebSocket connection latency in milliseconds
 - Both metrics update automatically and use color coding for quick status checks
@@ -54,6 +61,7 @@ The application will be available at `http://localhost:3000`
 ### Development Mode
 
 For development with auto-reload:
+
 ```bash
 npm run dev
 ```
@@ -217,4 +225,3 @@ MIT
 ## 👤 Author
 
 Built as a technical assignment demonstrating real-time collaborative application development.
-
